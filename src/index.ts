@@ -8,3 +8,18 @@ import type { Handler, HandlerFunction } from "./server/handler.js"
 import type { HandlerResponse } from "./server/response.js"
 
 import * as helpers from "./server/helpers.js"
+
+export {
+  Dispatcher,
+  Router,
+  Route,
+  helpers
+}
+
+export type {
+  Filter,
+  Method,
+  Handler,
+  HandlerFunction,
+  HandlerResponse
+}

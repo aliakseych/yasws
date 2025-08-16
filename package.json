@@ -1,6 +1,6 @@
 {
   "name": "yasws",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Yet Another Simple Web Server",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,9 +22,6 @@
     "@types/ejs": "^3.1.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
-  },
-  "dependencies": {
-    "ejs": "^3.1.10"
   },
   "homepage": "https://github.com/aliakseych/yasws/#readme",
   "repository": {

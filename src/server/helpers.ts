@@ -1,10 +1,26 @@
-export { removeEndSlash }
+export { normalizePath, removeStartSlash, addEndSlash }
 
-function removeEndSlash(str: string) {
-  // Removing trailing forward slashes in the end of a path
+function normalizePath(str: string): string {
+  // Remove leading slash if exists
+  str = removeStartSlash(str)
 
-  if (str.length > 1 && str.endsWith('/')) {
-    return str.slice(0, -1);
+  // Add trailing slash, if there is not one
+  str = addEndSlash(str)
+
+  return str;
+}
+
+function addEndSlash(str: string): string {
+  if (!str.endsWith("/")) {
+    str += "/";
+  }
+
+  return str;
+}
+
+function removeStartSlash(str: string): string {
+  if (str.startsWith("/")) {
+    str = str.slice(1);
   }
 
   return str;

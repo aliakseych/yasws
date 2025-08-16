@@ -1,6 +1,6 @@
 import http from "node:http"
 
-import { removeEndSlash } from "./helpers.js"
+import { normalizePath, addEndSlash } from "./helpers.js"
 import { Method } from "./method.js"
 import type { Handler } from "./handler.js"
 import type { Filter } from "./filter.js"
@@ -12,6 +12,7 @@ class Router {
     name: string | undefined
     rootPath: string
     dispatcherPath: string
+    fullPath: string
     private handlers: Handler[]
     private subrouters: Router[]
 
@@ -20,11 +21,12 @@ class Router {
         name?: string,
         dispatcherPath?: string
     ) {
-        this.rootPath = removeEndSlash(rootPath ??= "")
-        this.dispatcherPath = removeEndSlash(dispatcherPath ??= "")
+        this.rootPath = normalizePath(rootPath ??= "")
+        this.dispatcherPath = normalizePath(dispatcherPath ??= "")
         this.name = name
         this.handlers = []
         this.subrouters = []
+        this.fullPath = `${this.dispatcherPath}${this.rootPath}`
         this.registerRoutes()
     }
 
@@ -35,32 +37,40 @@ class Router {
         this.handlers = routerConstructor._handlers || []
         
         if (this.handlers.length > 0) {
-            console.log(`* Registered routes to router ${this.constructor.name}`)
+            console.log(`* Registered handlers to router ${this.constructor.name}`)
         }
 
         for (const handler of this.handlers) {
-            console.log(` - ${handler.function.name} (${handler.method})`)
+            console.log(` - ${handler.path}: ${handler.function.name} (${handler.method})`)
         }
     }
 
     public addRouter <RouterModel extends Router> (router: RouterModel): void {
         // Changing dispatcher path on added router to this router root path, so it's identified as a root router
-        router.dispatcherPath = this.rootPath
+        router.dispatcherPath = `${this.dispatcherPath}${this.rootPath}`
         this.subrouters.push(router);
 
         const routerName: string = router.name ??= router.constructor.name
-        console.log(`% Added router ${routerName} to ${this.constructor.name}`)
+        const subrouterFullPath = `${router.dispatcherPath}${router.rootPath}`
+        router.fullPath = subrouterFullPath
+        console.log(`% Added router ${routerName} to ${this.constructor.name} (path ${subrouterFullPath})`)
     }
 
-    public handleEvent(request: http.IncomingMessage, response: http.ServerResponse): boolean {
+    public handleEvent(request: http.IncomingMessage, response: http.ServerResponse, pathOffset: number = 0): boolean {
         const requestURL: string = request.url ??= ""
         const url = new URL(requestURL, `http://${request.headers.host}`)
-        const fullRequestPath: string = url.pathname            
+        const fullRequestPath: string = addEndSlash(url.pathname)         
 
         console.log(`\n! Recieved ${request.method} request on ${fullRequestPath}`)
 
         handlerLoop: for (const handler of this.handlers) {
             console.log(`  * Checking if ${handler.function.name} is a match`)
+            // Checking if paths match
+            const handlerFullPath = `${this.fullPath}${handler.path}`
+            if (fullRequestPath != handlerFullPath) {
+                continue
+            }
+
             // Checking if methods match
             if (request.method != handler.method) {
                 continue
@@ -87,8 +97,13 @@ class Router {
         // Checking subrouters' handlers for a match
         for (const subrouter of this.subrouters) {
             // Checking that this subrouter may possibly get this request, in terms of path
-            const routerBasePath: string = `${this.rootPath}${subrouter.rootPath ??= ""}`
-            if (fullRequestPath.startsWith(routerBasePath)) {
+            const subrouterFullPath = `${subrouter.dispatcherPath}${subrouter.rootPath}`
+
+            console.log(subrouter.dispatcherPath)
+            console.log(subrouter.rootPath)
+            console.log(fullRequestPath)
+
+            if (fullRequestPath.startsWith(subrouterFullPath)) {
                 console.log(`  * Checking in router ${subrouter.constructor.name}`)
                 console.log(`  - - - - - - -`)
                 const eventHandled: boolean = subrouter.handleEvent(request, response)
@@ -119,9 +134,18 @@ class Router {
     }
 }
 
-function Route(path: string = "/", method: Method | string = Method.GET, filters: Filter[] = []) {
+function Route(path: string = "", method: Method | string = Method.GET, filters: Filter[] = []) {
     return function (target: any, propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor {
         const handlerFunction = descriptor.value;
+
+        // Considering slash is a default location for a router, it shouldn't stack on the URL, because it
+        // doesn't contain any meaning - so it needs to be removed (replaced with empty path)
+        if (path == "/") {
+            path = ""
+        // Else, it just normalizes the meaningfull path
+        } else {
+            path = normalizePath(path)
+        }
 
         // Initializing handlers list in Router construcor, if it's undefined
         target.constructor._handlers = target.constructor._handlers ??= []
@@ -129,7 +153,7 @@ function Route(path: string = "/", method: Method | string = Method.GET, filters
 
         // Adding handler
         handlers.push({
-            path: removeEndSlash(path),
+            path: path,
             method: method,
             filters: filters,
             function: handlerFunction

@@ -15,7 +15,7 @@ class Dispatcher extends Router {
         name: string = "SWS Web App",
         port: number = 8000,
         hostname: string = "localhost",
-        rootPath: string = "/",
+        rootPath: string = "",
     ) {
         super(rootPath);
         this.server = http.createServer()
@@ -24,6 +24,7 @@ class Dispatcher extends Router {
         this.hostname = hostname;
         this.port = port;
         this.rootPath = rootPath;
+        this.fullPath = `${this.rootPath}`
     }
 
     public run(): void {
