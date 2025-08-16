@@ -7,32 +7,30 @@ YASWS is Yet Another Simple Web Server, written on TypeScript and http module fr
 
 It has support for handler decorators, filters, and nesting multiple routers on top of each other. It's thread-blocking at the moment (sync), but there are plans to rewriting it to promises (async).
 
-## Example
+## Code & architecture example
 
-Here is a Small example of web server, which runs on http://localhost:8000 (default values), and 
+A Small example of web server, which runs on http://localhost:8000 (default values), and has a network structure of:
+* /: Dispatcher
+  * /test/: testRouter
+    * /test/subtest/: subTestRouter
+  * /subtest/: subTestRouter
 
+It has a conditional filter (which 'filters' based on the boolean argument passed to it in the decorator) and multiple simple GET handlers.
+
+Below is the code for example web server described above.
+
+
+*index.js*
 ```js
-
 import http from "node:http"
-import fs from "node:fs"
 import ejs from "ejs"
 
 import { Dispatcher, Router, Route } from "yasws"
 import type { Filter, HandlerResponse } from "yasws"
 
-function renderDefaultTemplate(templateName: string, kwargs: Record<string, any>): string {
-  try {
-    const template = fs.readFileSync(`./src/templates/${templateName}`, "utf-8")
-    return ejs.render(template, kwargs)
-  } catch (err) {
-    console.error(`Error reading template file: ${err}`)
-    return ""
-  }
-}
-
 // All filters should have a call function
 class SomeFilter implements Filter {
-  someData: string
+  allowThrough: boolean
 
   constructor (allowThrough: boolean) {
     this.allowThrough = allowThrough
@@ -48,20 +46,29 @@ class SomeFilter implements Filter {
 
 class SmallRouter extends Router {
   // Decorator, where you can specify the path, request method and filters
-  @Route("/test/", "GET", [new SomeFilter("some browser")])
-  test(request: http.IncomingMessage, response: http.ServerResponse, ...args: any[]): HandlerResponse {
+  @Route("/", "GET", [new SomeFilter(true)])
+  something(request: http.IncomingMessage): HandlerResponse {
     // Router fills other data by itself, you just provide content
     const handlerResponse: HandlerResponse = {
       statusCode: 200,
       contentType: "text/json",
-      data: "{'Something really small': '100%'}"
+      data: "{'It is really something at least'}"
+    }
+    
+    return handlerResponse
+  }
+  @Route("/a_bit_hard_to_get", "GET", [new SomeFilter(false)])
+  nope(request: http.IncomingMessage): HandlerResponse {
+    // Can't get here because of the filters
+    const handlerResponse: HandlerResponse = {
+      statusCode: 200,
+      contentType: "text/json",
+      data: "{'You know, Wizards were burned before...'}"
     }
     
     return handlerResponse
   }
 }
-
-const router = new SmallRouter("test/")
 
 class SomeDispatcher extends Dispatcher {
   // This function is called when dispatcher couldn't handle this request
@@ -70,8 +77,22 @@ class SomeDispatcher extends Dispatcher {
     const url = new URL(requestURL, `http://${request.headers.host}`)
     const fullRequestPath: string = url.pathname
 
-    // Imagine some ejs template, which displays the error
-    const renderedTemplate: string | void = renderDefaultTemplate("status.ejs", {statusCode: 404})
+    // Small ejs template, which displays the error.
+    // Built-in for simplicity, but it's better to move it to filesystem,
+    // and reading it via node:fs
+    const template: string = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title><%= statusCode %></title>
+      </head>
+      <body>
+          <h1>You got <%= statusCode %>-ed</h1>
+          <p>Good luck next time!</p>
+      </body>
+      </html>
+    `
+    const renderedTemplate: string | void = ejs.render(template, {statusCode: 404})
 
     const templateResponse: HandlerResponse = {
       statusCode: 404,
@@ -83,12 +104,24 @@ class SomeDispatcher extends Dispatcher {
   }
 }
 
+// Creating a testRouter, which base path will be /test/
+const testRouter = new SmallRouter("test/")
 
+// Creating a testSubRouter
+const testSubRouter = new SmallRouter("subtest/")
+// It's path will be /test/subtest/, sbecause it's added to
+// the router with /test/ path
+testRouter.addRouter(testSubRouter)
+
+// Dispatcher, which will handle all requests to routers.
+// By default runs on localhost:8000, and has / path
 const dispatcher = new SomeDispatcher()
-
-dispatcher.addRouter(test)
+dispatcher.addRouter(testRouter)
+// When adding this router to dispatcher directly, it will
+// have path /subtest/, but that doesn't obstruct the testSubRouter 
+// running under the testRouter (I mean that it also works)
+dispatcher.addRouter(testSubRouter)
 dispatcher.run()
-
 ```
 
 ## Contributing
