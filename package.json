@@ -1,7 +1,7 @@
 {
   "name": "yasws",
   "version": "1.0.0",
-  "description": "Yet Another Small Web Server",
+  "description": "Yet Another Simple Web Server",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,7 +10,10 @@
     "prod": "node dist/index.js",
     "clean": "rm -rf dist"
   },
-  "keywords": ["typescript", "node", "server", "ejs"],
+  "keywords": [
+    "typescript",
+    "webserver"
+  ],
   "author": "Alex <aliakseych@gmail.com>",
   "license": "GPLv3",
   "type": "module",
@@ -23,9 +26,9 @@
   "dependencies": {
     "ejs": "^3.1.10"
   },
-  "homepage": "https://github.com/aliakseych/sws/#readme",
+  "homepage": "https://github.com/aliakseych/yasws/#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aliakseych/sws.git"
+    "url": "git+https://github.com/aliakseych/yasws.git"
   }
 }
