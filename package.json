@@ -1,0 +1,31 @@
+{
+  "name": "yasws",
+  "version": "1.0.0",
+  "description": "Yet Another Small Web Server",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "prod": "node dist/index.js",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["typescript", "node", "server", "ejs"],
+  "author": "Alex <aliakseych@gmail.com>",
+  "license": "GPLv3",
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/ejs": "^3.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "ejs": "^3.1.10"
+  },
+  "homepage": "https://github.com/aliakseych/sws/#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aliakseych/sws.git"
+  }
+}
