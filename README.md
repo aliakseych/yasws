@@ -15,10 +15,14 @@ A Small example of web server, which runs on http://localhost:8000 (default valu
     * /test/subtest/: subTestRouter
   * /subtest/: subTestRouter
 
-It has a conditional filter (which 'filters' based on the boolean argument passed to it in the decorator) and multiple simple GET handlers.
+It has a conditional filter (which 'filters' based on the boolean argument passed to it in the decorator) and multiple simple GET handlers:
+* /: "something", simple handler
+* /witchery/: "nope", unaccessable handler due to filter
+* /nothing/: "nothing", returns 404 because it doesn't return valid response
+
+It also has a middleware, which passes string argument to handlers, which is passed to itself on launch.
 
 Below is the code for example web server described above.
-
 
 *index.js*
 ```js
@@ -26,7 +30,7 @@ import http from "node:http"
 import ejs from "ejs"
 
 import { Dispatcher, Router, Route } from "yasws"
-import type { Filter, HandlerResponse } from "yasws"
+import type { Filter, HandlerResponse, Request, Middleware } from "yasws"
 
 // All filters should have a call function
 class SomeFilter implements Filter {
@@ -37,36 +41,66 @@ class SomeFilter implements Filter {
   }
 
   public call(request: http.IncomingMessage) {
-    // If it's allowed to go through - you go through
-    // If it's not - you don't
+    // The logic this filter executes is...
+    // - If it's "allowed" to go through - you go through
+    // - If it's not - you don't
 
     return this.allowThrough
+  }
+}
+
+// All middlewares should also have a call function
+class SomeMiddleware implements Middleware {
+  someData: string
+
+  constructor (someData: string) {
+    this.someData = someData
+  }
+
+  public call(request: Request): Request {
+    // Passing some argument to request, which was given in Middleware constructor
+    request.args.somedata = this.someData
+    return request
   }
 }
 
 class SmallRouter extends Router {
   // Decorator, where you can specify the path, request method and filters
   @Route("/", "GET", [new SomeFilter(true)])
-  something(request: http.IncomingMessage): HandlerResponse {
+  something(request: Request): HandlerResponse {
+    // Getting data, which was passed via middleware to request.args
+    const someData = [
+      `Middleware passed this string to me: '${request.args.somedata}'. idk, do something with it`,
+      `There is also nonexistent argument, check it out: ${request.args.nonexistent}`
+    ]
+
     // Router fills other data by itself, you just provide content
     const handlerResponse: HandlerResponse = {
       statusCode: 200,
       contentType: "text/json",
-      data: "{'It is really something at least'}"
+      data: JSON.stringify(someData)
     }
     
     return handlerResponse
   }
-  @Route("/a_bit_hard_to_get", "GET", [new SomeFilter(false)])
-  nope(request: http.IncomingMessage): HandlerResponse {
+
+  @Route("/witchery", "GET", [new SomeFilter(false)])
+  nope(request: Request): HandlerResponse {
     // Can't get here because of the filters
     const handlerResponse: HandlerResponse = {
       statusCode: 200,
       contentType: "text/json",
-      data: "{'You know, Wizards were burned before...'}"
+      data: "{'You know, before you could've be burnt for witchery...'}"
     }
     
     return handlerResponse
+  }
+
+  // If handler returns nothing or not in format (at least it should have status code) - it
+  // won't be counted as a return, and user gets redirected to 404 page (about this - below)
+  @Route("/nothing", "GET")
+  nothing(): void {
+    return
   }
 }
 
@@ -107,6 +141,12 @@ class SomeDispatcher extends Dispatcher {
 // Creating a testRouter, which base path will be /test/
 const testRouter = new SmallRouter("test/")
 
+// This middleware just passes some text argument.
+// But it can go more, for example - passthrough DB session
+const someMiddleware: SomeMiddleware = new SomeMiddleware("Some real data (yes. it's 100% real)")
+// Registring SomeMiddleware to testRouter
+testRouter.addMiddleware(someMiddleware)
+
 // Creating a testSubRouter
 const testSubRouter = new SmallRouter("subtest/")
 // It's path will be /test/subtest/, sbecause it's added to
@@ -116,6 +156,7 @@ testRouter.addRouter(testSubRouter)
 // Dispatcher, which will handle all requests to routers.
 // By default runs on localhost:8000, and has / path
 const dispatcher = new SomeDispatcher()
+
 dispatcher.addRouter(testRouter)
 // When adding this router to dispatcher directly, it will
 // have path /subtest/, but that doesn't obstruct the testSubRouter 
