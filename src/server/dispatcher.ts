@@ -6,28 +6,22 @@ export { Dispatcher }
 
 class Dispatcher extends Router {
     name: string
-    port: number
-    hostname: string
     rootPath: string
     private server: http.Server
 
     public constructor(
         name: string = "SWS Web App",
-        port: number = 8000,
-        hostname: string = "localhost",
         rootPath: string = "",
     ) {
-        super(rootPath);
+        super()
         this.server = http.createServer()
 
         this.name = name;
-        this.hostname = hostname;
-        this.port = port;
         this.rootPath = rootPath;
         this.fullPath = `${this.rootPath}`
     }
 
-    public run(): void {
+    public run(port: number = 8000, hostname: string = "localhost"): void {
         this.server = http.createServer(
             // Handling the requesjs via handleEvent function
             (request: http.IncomingMessage, response: http.ServerResponse) => {
@@ -38,19 +32,19 @@ class Dispatcher extends Router {
             }
         )
 
-        console.log(`Starting listening on http://${this.hostname}:${this.port}`)
-        this.server.listen({ port: this.port, hostname: this.hostname })
+        this.logger.info(`Starting listening on http://${hostname}:${port}`)
+        this.server.listen({ port: port, hostname: hostname })
 
         // Stopping the server if Ctrl+C was stopped
         process.on('SIGINT', () => {
-            console.log('Ctrl+C was pressed. Stopping server...');
+            this.logger.info('Ctrl+C was pressed. Stopping server...');
             this.stop()
         });
     }
 
     public stop(): void {
         this.server.close();
-        console.log('Server has been successfully stopped');
+        this.logger.info('Server has been successfully stopped');
     }
 
     // Empty function, that can be replaced by user's business logic for handling unhandled responses

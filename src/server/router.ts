@@ -5,6 +5,7 @@ import { Method } from "./method.js"
 import type { Handler } from "./handler.js"
 import type { Filter } from "./filter.js"
 import type { HandlerResponse } from "./response.js"
+import { defaultLogger, Logger } from "../logger.js"
 
 export { Router, Route }
 
@@ -13,16 +14,22 @@ class Router {
     rootPath: string
     dispatcherPath: string
     fullPath: string
+    public logger: Logger
     private handlers: Handler[]
     private subrouters: Router[]
 
     public constructor(
         rootPath?: string,
         name?: string,
-        dispatcherPath?: string
+        dispatcherPath?: string,
+        logger?: Logger
     ) {
+        // Setting up paths
         this.rootPath = normalizePath(rootPath ??= "")
         this.dispatcherPath = normalizePath(dispatcherPath ??= "")
+        // Setting up logger
+        this.logger = logger ??= defaultLogger
+
         this.name = name
         this.handlers = []
         this.subrouters = []
@@ -31,17 +38,17 @@ class Router {
     }
 
     private registerRoutes(): void {
-        // Getting constructor, and casting it's type to any (kinda, idk)
+        // Getting constructor, and casting it's type to any, so TS don't blast with errors
         const routerConstructor = this.constructor as any
         // Getting routes, that was added via router decorator as a list
         this.handlers = routerConstructor._handlers || []
         
         if (this.handlers.length > 0) {
-            console.log(`* Registered handlers to router ${this.constructor.name}`)
+            this.logger.info(`* Registered handlers to router ${this.constructor.name}`)
         }
 
         for (const handler of this.handlers) {
-            console.log(` - ${handler.path}: ${handler.function.name} (${handler.method})`)
+            this.logger.debug(` - ${handler.path}: ${handler.function.name} (${handler.method})`)
         }
     }
 
@@ -53,7 +60,7 @@ class Router {
         const routerName: string = router.name ??= router.constructor.name
         const subrouterFullPath = `${router.dispatcherPath}${router.rootPath}`
         router.fullPath = subrouterFullPath
-        console.log(`% Added router ${routerName} to ${this.constructor.name} (path ${subrouterFullPath})`)
+        this.logger.info(`% Added router ${routerName} to ${this.constructor.name} (path ${subrouterFullPath})`)
     }
 
     public handleEvent(request: http.IncomingMessage, response: http.ServerResponse, pathOffset: number = 0): boolean {
@@ -61,10 +68,10 @@ class Router {
         const url = new URL(requestURL, `http://${request.headers.host}`)
         const fullRequestPath: string = addEndSlash(url.pathname)         
 
-        console.log(`\n! Recieved ${request.method} request on ${fullRequestPath}`)
+        this.logger.info(`Recieved ${request.method} request on ${fullRequestPath}`)
 
         handlerLoop: for (const handler of this.handlers) {
-            console.log(`  * Checking if ${handler.function.name} is a match`)
+            this.logger.debug(`  * Checking if ${handler.function.name} is a match`)
             // Checking if paths match
             const handlerFullPath = `${this.fullPath}${handler.path}`
             if (fullRequestPath != handlerFullPath) {
@@ -80,17 +87,17 @@ class Router {
             for (const filter of handler.filters) {
                 const filterResult: boolean = filter.call(request)
                 // Skipping this handler, if some of the filters fail (return false)
-                if (filterResult == false) {
-                    console.log(`    - FAILED: ${filter.constructor.name} filter`)
+                if (filterResult === false) {
+                    this.logger.debug(`    - FAILED: ${filter.constructor.name} filter`)
                     continue handlerLoop
                 }
-                console.log(`    - PASS: ${filter.constructor.name} filter`)
+                this.logger.debug(`    - PASS: ${filter.constructor.name} filter`)
             }
             
             // Executing the handler, if all of it's filters passed
             const handlerResponse: HandlerResponse = handler.function(request)
             this.sendResponse(response, handlerResponse, fullRequestPath)
-            console.log(`    - SUCCESS: returned a response`)
+            this.logger.debug(`    - SUCCESS: returned a response`)
             return true
         } 
 
@@ -99,18 +106,14 @@ class Router {
             // Checking that this subrouter may possibly get this request, in terms of path
             const subrouterFullPath = `${subrouter.dispatcherPath}${subrouter.rootPath}`
 
-            console.log(subrouter.dispatcherPath)
-            console.log(subrouter.rootPath)
-            console.log(fullRequestPath)
-
             if (fullRequestPath.startsWith(subrouterFullPath)) {
-                console.log(`  * Checking in router ${subrouter.constructor.name}`)
-                console.log(`  - - - - - - -`)
+                this.logger.debug(`  * Checking in router ${subrouter.constructor.name}`)
+                this.logger.debug(`  - - - - - - -`)
                 const eventHandled: boolean = subrouter.handleEvent(request, response)
                 // Check, if subrouter has found a matching handler.
                 // If so - return that this router does found it too
-                console.log(`  - - - - - - -`)
-                if (eventHandled == true) {
+                this.logger.debug(`  - - - - - - -`)
+                if (eventHandled === true) {
                     return true
                 }
             }

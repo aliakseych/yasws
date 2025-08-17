@@ -9,11 +9,18 @@ import type { HandlerResponse } from "./server/response.js"
 
 import * as helpers from "./server/helpers.js"
 
+import { Logger, LogLevel, LogMode } from "./logger.js"
+import defaultLogger from "./logger.js"
+
 export {
   Dispatcher,
   Router,
   Route,
-  helpers
+  helpers,
+  defaultLogger,
+  Logger,
+  LogLevel,
+  LogMode
 }
 
 export type {
