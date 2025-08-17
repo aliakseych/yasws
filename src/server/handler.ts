@@ -1,12 +1,11 @@
-import http from "node:http"
-
 import { Method } from "./method.js"
 import type { Filter } from "./filter.js"
 import type { HandlerResponse } from "./response.js"
+import type { Request } from "./request.js"
 
 export type { Handler, HandlerFunction }
 
-type HandlerFunction = (req: http.IncomingMessage) => HandlerResponse
+type HandlerFunction = (request: Request) => HandlerResponse
 
 interface Handler {
     path: string

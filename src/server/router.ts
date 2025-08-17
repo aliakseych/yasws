@@ -5,6 +5,9 @@ import { Method } from "./method.js"
 import type { Handler } from "./handler.js"
 import type { Filter } from "./filter.js"
 import type { HandlerResponse } from "./response.js"
+import { isResponse } from "./response.js"
+import type { Middleware } from "./middleware.js"
+import type { Request } from "./request.js"
 import { defaultLogger, Logger } from "../logger.js"
 
 export { Router, Route }
@@ -17,6 +20,7 @@ class Router {
     public logger: Logger
     private handlers: Handler[]
     private subrouters: Router[]
+    private middlewares: Middleware[]
 
     public constructor(
         rootPath?: string,
@@ -30,10 +34,14 @@ class Router {
         // Setting up logger
         this.logger = logger ??= defaultLogger
 
+        // Setting default parameters of router
         this.name = name
+        this.fullPath = `${this.dispatcherPath}${this.rootPath}`
         this.handlers = []
         this.subrouters = []
-        this.fullPath = `${this.dispatcherPath}${this.rootPath}`
+        this.middlewares = []
+
+        // Register all decorators
         this.registerRoutes()
     }
 
@@ -45,14 +53,17 @@ class Router {
         
         if (this.handlers.length > 0) {
             this.logger.info(`* Registered handlers to router ${this.constructor.name}`)
-        }
 
-        for (const handler of this.handlers) {
-            this.logger.debug(` - ${handler.path}: ${handler.function.name} (${handler.method})`)
+            // Writing to DEBUG names, paths and methods of handler functions
+            let handlersMessage = `\n* Handlers, registered to router ${this.constructor.name}:\n`
+            for (const handler of this.handlers) {
+                handlersMessage += `- ${handler.path || "/"}: ${handler.function.name} (${handler.method})\n`
+            }
+            this.logger.debug(handlersMessage)
         }
     }
 
-    public addRouter <RouterModel extends Router> (router: RouterModel): void {
+    public addRouter <RouterChild extends Router> (router: RouterChild): void {
         // Changing dispatcher path on added router to this router root path, so it's identified as a root router
         router.dispatcherPath = `${this.dispatcherPath}${this.rootPath}`
         this.subrouters.push(router);
@@ -63,15 +74,23 @@ class Router {
         this.logger.info(`% Added router ${routerName} to ${this.constructor.name} (path ${subrouterFullPath})`)
     }
 
-    public handleEvent(request: http.IncomingMessage, response: http.ServerResponse, pathOffset: number = 0): boolean {
-        const requestURL: string = request.url ??= ""
-        const url = new URL(requestURL, `http://${request.headers.host}`)
+    public addMiddleware <MiddlewareChild extends Middleware> (middleware: MiddlewareChild): void {
+        // Changing dispatcher path on added router to this router root path, so it's identified as a root router
+        this.middlewares.push(middleware);
+
+        const middlewareName: string = middleware.constructor.name
+        this.logger.info(`% Added middleware ${middlewareName} to ${this.constructor.name}`)
+    }
+
+    public handleEvent(clientRequest: http.IncomingMessage, response: http.ServerResponse): boolean {
+        const requestURL: string = clientRequest.url ??= ""
+        const url = new URL(requestURL, `http://${clientRequest.headers.host}`)
         const fullRequestPath: string = addEndSlash(url.pathname)         
 
-        this.logger.info(`Recieved ${request.method} request on ${fullRequestPath}`)
+        this.logger.info(`Recieved ${clientRequest.method} request on ${fullRequestPath}`)
 
         handlerLoop: for (const handler of this.handlers) {
-            this.logger.debug(`  * Checking if ${handler.function.name} is a match`)
+            this.logger.debug(`* Checking if ${handler.function.name} is a match`)
             // Checking if paths match
             const handlerFullPath = `${this.fullPath}${handler.path}`
             if (fullRequestPath != handlerFullPath) {
@@ -79,25 +98,43 @@ class Router {
             }
 
             // Checking if methods match
-            if (request.method != handler.method) {
+            if (clientRequest.method != handler.method) {
                 continue
             }
 
             // Checking filters of handler, and if it matches - handle the request via it
             for (const filter of handler.filters) {
-                const filterResult: boolean = filter.call(request)
+                const filterResult: boolean = filter.call(clientRequest)
                 // Skipping this handler, if some of the filters fail (return false)
                 if (filterResult === false) {
-                    this.logger.debug(`    - FAILED: ${filter.constructor.name} filter`)
+                    this.logger.debug(`FAILED: ${filter.constructor.name} filter`)
                     continue handlerLoop
                 }
-                this.logger.debug(`    - PASS: ${filter.constructor.name} filter`)
+                this.logger.debug(`PASS: ${filter.constructor.name} filter`)
             }
             
+            // Initializing request class, which will be used by middlewares and handler
+            // args is a list, which may be used by middleware to pass back arguments
+            let request: Request = {
+                clientRequest: clientRequest,
+                args: {}
+            }
+            // Going through middlewares, when the matching handler is found
+            for (const middleware of this.middlewares) {
+                request = middleware.call(request)
+            }
+
             // Executing the handler, if all of it's filters passed
             const handlerResponse: HandlerResponse = handler.function(request)
+
+            // Checking if the handler has returned response, if not - skip this handler
+            // TODO: Replace with returning 5xx error
+            if (!isResponse(handlerResponse)) {
+                continue 
+            }
+
             this.sendResponse(response, handlerResponse, fullRequestPath)
-            this.logger.debug(`    - SUCCESS: returned a response`)
+            this.logger.debug(`SUCCESS: returned a response`)
             return true
         } 
 
@@ -107,12 +144,10 @@ class Router {
             const subrouterFullPath = `${subrouter.dispatcherPath}${subrouter.rootPath}`
 
             if (fullRequestPath.startsWith(subrouterFullPath)) {
-                this.logger.debug(`  * Checking in router ${subrouter.constructor.name}`)
-                this.logger.debug(`  - - - - - - -`)
-                const eventHandled: boolean = subrouter.handleEvent(request, response)
+                this.logger.debug(`* Checking in router ${subrouter.constructor.name}`)
+                const eventHandled: boolean = subrouter.handleEvent(clientRequest, response)
                 // Check, if subrouter has found a matching handler.
                 // If so - return that this router does found it too
-                this.logger.debug(`  - - - - - - -`)
                 if (eventHandled === true) {
                     return true
                 }

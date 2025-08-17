@@ -1,3 +1,4 @@
+export { isResponse }
 export type { HandlerResponse }
 
 // HTTP Basic Response
@@ -19,3 +20,4 @@ interface HandlerResponse {
     headers?: Record<string, string>
 }
 
+const isResponse = (response: any): response is HandlerResponse => (response as HandlerResponse)?.statusCode !== undefined;
