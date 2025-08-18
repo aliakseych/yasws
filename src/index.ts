@@ -9,6 +9,9 @@ import type { Method } from "./server/method.ts"
 import type { Handler, HandlerFunction } from "./server/handler.js"
 import type { HandlerResponse } from "./server/response.js"
 
+import { Templater, TemplaterMiddleware, LoadStrategy } from "./templates/templater.js"
+import { HTMLResponse } from "./templates/responses.js"
+
 import * as helpers from "./server/helpers.js"
 
 import { Logger, LogLevel, LogMode } from "./logger.js"
@@ -23,6 +26,10 @@ export {
   Logger,
   LogLevel,
   LogMode,
+  Templater,
+  TemplaterMiddleware,
+  LoadStrategy,
+  HTMLResponse
 }
 
 export type {
