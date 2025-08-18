@@ -21,13 +21,13 @@ class Dispatcher extends Router {
         this.fullPath = `${this.rootPath}`
     }
 
-    public run(port: number = 8000, hostname: string = "localhost"): void {
+    public async run(port: number = 8000, hostname: string = "localhost"): Promise<void> {
         this.server = http.createServer(
             // Handling the requesjs via handleEvent function
-            (request: http.IncomingMessage, response: http.ServerResponse) => {
-                const eventHandled: boolean = this.handleEvent(request, response)
+            async (request: http.IncomingMessage, response: http.ServerResponse) => {
+                const eventHandled: boolean = await this.handleEvent(request, response)
                 if (eventHandled == false) {
-                    this.handleUnhandled(request, response)
+                    await this.handleUnhandled(request, response)
                 }
             }
         )
@@ -42,11 +42,11 @@ class Dispatcher extends Router {
         });
     }
 
-    public stop(): void {
+    public async stop(): Promise<void> {
         this.server.close();
         this.logger.info('Server has been successfully stopped');
     }
 
     // Empty function, that can be replaced by user's business logic for handling unhandled responses
-    public handleUnhandled(request: http.IncomingMessage, response: http.ServerResponse): void {return}
+    public async handleUnhandled(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {return}
 }

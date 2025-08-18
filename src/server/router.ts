@@ -45,7 +45,7 @@ class Router {
         this.registerRoutes()
     }
 
-    private registerRoutes(): void {
+    private async registerRoutes(): Promise<void> {
         // Getting constructor, and casting it's type to any, so TS don't blast with errors
         const routerConstructor = this.constructor as any
         // Getting routes, that was added via router decorator as a list
@@ -63,7 +63,7 @@ class Router {
         }
     }
 
-    public addRouter <RouterChild extends Router> (router: RouterChild): void {
+    public async addRouter <RouterChild extends Router> (router: RouterChild): Promise<void> {
         // Changing dispatcher path on added router to this router root path, so it's identified as a root router
         router.dispatcherPath = `${this.dispatcherPath}${this.rootPath}`
         this.subrouters.push(router);
@@ -74,7 +74,7 @@ class Router {
         this.logger.info(`% Added router ${routerName} to ${this.constructor.name} (path ${subrouterFullPath})`)
     }
 
-    public addMiddleware <MiddlewareChild extends Middleware> (middleware: MiddlewareChild): void {
+    public async addMiddleware <MiddlewareChild extends Middleware> (middleware: MiddlewareChild): Promise<void> {
         // Changing dispatcher path on added router to this router root path, so it's identified as a root router
         this.middlewares.push(middleware);
 
@@ -82,7 +82,7 @@ class Router {
         this.logger.info(`% Added middleware ${middlewareName} to ${this.constructor.name}`)
     }
 
-    public handleEvent(clientRequest: http.IncomingMessage, response: http.ServerResponse): boolean {
+    public async handleEvent(clientRequest: http.IncomingMessage, response: http.ServerResponse): Promise<boolean> {
         const requestURL: string = clientRequest.url ??= ""
         const url = new URL(requestURL, `http://${clientRequest.headers.host}`)
         const fullRequestPath: string = addEndSlash(url.pathname)         
@@ -125,7 +125,7 @@ class Router {
             }
 
             // Executing the handler, if all of it's filters passed
-            const handlerResponse: HandlerResponse = handler.function(request)
+            const handlerResponse: HandlerResponse = await handler.function(request)
 
             // Checking if the handler has returned response, if not - skip this handler
             // TODO: Replace with returning 5xx error
@@ -145,7 +145,7 @@ class Router {
 
             if (fullRequestPath.startsWith(subrouterFullPath)) {
                 this.logger.debug(`* Checking in router ${subrouter.constructor.name}`)
-                const eventHandled: boolean = subrouter.handleEvent(clientRequest, response)
+                const eventHandled: boolean = await subrouter.handleEvent(clientRequest, response)
                 // Check, if subrouter has found a matching handler.
                 // If so - return that this router does found it too
                 if (eventHandled === true) {
@@ -158,7 +158,7 @@ class Router {
 
     }
 
-    public sendResponse(response: http.ServerResponse, handlerResponse: HandlerResponse, path: string): void {
+    public async sendResponse(response: http.ServerResponse, handlerResponse: HandlerResponse, path: string): Promise<void> {
         response.statusCode = handlerResponse.statusCode
         response.setHeader('Location', path)
         const datetimeGMT: string = (new Date()).toUTCString()
