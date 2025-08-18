@@ -5,7 +5,7 @@ import type { Request } from "./request.js"
 
 export type { Handler, HandlerFunction }
 
-type HandlerFunction = (request: Request) => HandlerResponse
+type HandlerFunction = (request: Request) => Promise<HandlerResponse>
 
 interface Handler {
     path: string
