@@ -8,7 +8,8 @@ import type { HandlerResponse } from "./response.js"
 import { isResponse } from "./response.js"
 import type { Middleware } from "./middleware.js"
 import type { Request } from "./request.js"
-import { defaultLogger, Logger } from "../logger.js"
+import type { Header } from "./header.js"
+import { defaultLogger, Logger, LoggerMiddleware } from "../logger.js"
 
 export { Router, Route }
 
@@ -17,20 +18,24 @@ class Router {
     rootPath: string
     dispatcherPath: string
     fullPath: string
+    defaultHeaders: Header[]
     public logger: Logger
     private handlers: Handler[]
     private subrouters: Router[]
     private middlewares: Middleware[]
 
     public constructor(
-        rootPath?: string,
-        name?: string,
-        dispatcherPath?: string,
-        logger?: Logger
+        {name, rootPath, dispatcherPath, logger, defaultHeaders}: 
+        {name?: string,
+        rootPath?: string | undefined,
+        dispatcherPath?: string | undefined,
+        logger?: Logger | undefined,
+        defaultHeaders?: Header[]}
     ) {
         // Setting up paths
         this.rootPath = normalizePath(rootPath ??= "")
         this.dispatcherPath = normalizePath(dispatcherPath ??= "")
+
         // Setting up logger
         this.logger = logger ??= defaultLogger
 
@@ -40,9 +45,13 @@ class Router {
         this.handlers = []
         this.subrouters = []
         this.middlewares = []
+        this.defaultHeaders = defaultHeaders ??= []
 
         // Register all decorators
         this.registerRoutes()
+
+        // Registring default middleware
+        this.addMiddleware(new LoggerMiddleware())
     }
 
     private async registerRoutes(): Promise<void> {
@@ -68,6 +77,9 @@ class Router {
         router.dispatcherPath = `${this.dispatcherPath}${this.rootPath}`
         this.subrouters.push(router);
 
+        // Add default headers to new subrouter
+        router.defaultHeaders.push(...this.defaultHeaders)
+
         const routerName: string = router.name ??= router.constructor.name
         const subrouterFullPath = `${router.dispatcherPath}${router.rootPath}`
         router.fullPath = subrouterFullPath
@@ -82,18 +94,46 @@ class Router {
         this.logger.info(`% Added middleware ${middlewareName} to ${this.constructor.name}`)
     }
 
-    public async handleEvent(clientRequest: http.IncomingMessage, response: http.ServerResponse): Promise<boolean> {
-        const requestURL: string = clientRequest.url ??= ""
-        const url = new URL(requestURL, `http://${clientRequest.headers.host}`)
-        const fullRequestPath: string = addEndSlash(url.pathname)         
+    private getRequestPath(request: http.IncomingMessage): string {
+        const requestURL: string = request.url ??= ""
+        const url = new URL(requestURL, `http://${request.headers.host}`)
+        const requestPath: string = addEndSlash(url.pathname)  
+        
+        return requestPath
+    }
 
-        this.logger.info(`Recieved ${clientRequest.method} request on ${fullRequestPath}`)
+    public async handleEvent(clientRequest: http.IncomingMessage, response: http.ServerResponse): Promise<boolean> {     
+        const requestPath: string = this.getRequestPath(clientRequest)
+        this.logger.info(`Recieved ${clientRequest.method} request on ${requestPath}`)
+
+        // Initializing request class, which will be used by middlewares and handler
+        // args is a list, which may be used by middleware to pass back arguments
+        let request: Request | undefined | null = {
+            clientRequest: clientRequest,
+            args: {}
+        }
+
+        // Using a filter to optimize router, if there are no handlers (like the Dispatcher)
+        if (this.handlers.length > 0) {
+            // Going through pre-route middlewares (when the matchind handler hadn't been found)
+            for (const middleware of this.middlewares) {
+                // Checking if this middleware is pre-route
+                if (middleware.call !== undefined) {
+                    request = middleware.call(request)
+
+                    // If handling of the request was stopped via middleware - stop the handling fully
+                    if (request === undefined || request === null) {
+                        return false
+                    }
+                }
+            }
+        }
 
         handlerLoop: for (const handler of this.handlers) {
             this.logger.debug(`* Checking if ${handler.function.name} is a match`)
             // Checking if paths match
             const handlerFullPath = `${this.fullPath}${handler.path}`
-            if (fullRequestPath != handlerFullPath) {
+            if (requestPath != handlerFullPath) {
                 continue
             }
 
@@ -112,16 +152,18 @@ class Router {
                 }
                 this.logger.debug(`PASS: ${filter.constructor.name} filter`)
             }
-            
-            // Initializing request class, which will be used by middlewares and handler
-            // args is a list, which may be used by middleware to pass back arguments
-            let request: Request = {
-                clientRequest: clientRequest,
-                args: {}
-            }
-            // Going through middlewares, when the matching handler is found
+
+            // Executing posts-route middlewares (when the matchind handler has been found)
             for (const middleware of this.middlewares) {
-                request = middleware.call(request)
+                // Checking if this middleware is post-route
+                if (middleware.postRoute !== undefined) {
+                    request = middleware.postRoute(request)
+
+                    // If handling of the request was stopped via middleware - stop the handling fully
+                    if (request === undefined || request === null) {
+                        return false
+                    }
+                }
             }
 
             // Executing the handler, if all of it's filters passed
@@ -133,29 +175,37 @@ class Router {
                 continue 
             }
 
-            this.sendResponse(response, handlerResponse, fullRequestPath)
+            this.sendResponse(response, handlerResponse, requestPath)
             this.logger.debug(`SUCCESS: returned a response`)
             return true
         } 
 
         // Checking subrouters' handlers for a match
+        const eventHandled: boolean = await this.handleBySubrouters(clientRequest, response, requestPath)
+
+        return eventHandled
+
+    }
+
+    private async handleBySubrouters(request: http.IncomingMessage, response: http.ServerResponse, requestPath: string) {
+        let eventHandled: boolean = false
+
         for (const subrouter of this.subrouters) {
             // Checking that this subrouter may possibly get this request, in terms of path
             const subrouterFullPath = `${subrouter.dispatcherPath}${subrouter.rootPath}`
 
-            if (fullRequestPath.startsWith(subrouterFullPath)) {
+            if (requestPath.startsWith(subrouterFullPath)) {
                 this.logger.debug(`* Checking in router ${subrouter.constructor.name}`)
-                const eventHandled: boolean = await subrouter.handleEvent(clientRequest, response)
+                eventHandled = await subrouter.handleEvent(request, response)
                 // Check, if subrouter has found a matching handler.
                 // If so - return that this router does found it too
                 if (eventHandled === true) {
-                    return true
+                    break
                 }
             }
         }
-        
-        return false
 
+        return eventHandled
     }
 
     public async sendResponse(response: http.ServerResponse, handlerResponse: HandlerResponse, path: string): Promise<void> {
@@ -166,7 +216,13 @@ class Router {
         response.setHeader('Content-Type', handlerResponse.contentType)
         response.setHeader('Content-Length', handlerResponse.data.length)
         
-        // TODO: add support for adding other headers from handlerResponse.headers
+        // Add user-provided headers
+        if (handlerResponse.headers) {
+            handlerResponse.headers.forEach((header) => {response.setHeader(header.name, header.data)})
+        }
+
+        // Add default headers
+        this.defaultHeaders.forEach((header) => {response.setHeader(header.name, header.data)})
 
         response.end(handlerResponse.data)
     }
@@ -180,7 +236,7 @@ function Route(path: string = "", method: Method | string = Method.GET, filters:
         // doesn't contain any meaning - so it needs to be removed (replaced with empty path)
         if (path == "/") {
             path = ""
-        // Else, it just normalizes the meaningfull path
+        // Else, it just normalizes the path
         } else {
             path = normalizePath(path)
         }

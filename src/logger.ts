@@ -1,6 +1,9 @@
 import fs from "node:fs/promises"
 
-export { Logger, defaultLogger, LogLevel, LogMode }
+import type { Middleware } from "./server/middleware.js"
+import type { Request } from "./server/request.js"
+
+export { Logger, defaultLogger, LogLevel, LogMode, LoggerMiddleware }
 
 enum LogMode {
     PROD = "PROD",
@@ -121,4 +124,15 @@ const defaultLogger: Logger = new Logger()
 // Setting up the default logger
 const defaultLogMode: LogMode = LogMode.DEV
 defaultLogger.setMode(defaultLogMode)
-export default defaultLogger
+
+class LoggerMiddleware extends Logger implements Middleware  {
+  constructor () {
+    super()
+  }
+
+  public call(request: Request): Request {
+    // Passing some argument to request, which was given in Middleware constructor
+    request.args.logger = defaultLogger
+    return request
+  }
+}
