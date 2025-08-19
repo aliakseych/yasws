@@ -1,3 +1,5 @@
+import type { Header } from "./header.js"
+
 export { isResponse }
 export type { HandlerResponse }
 
@@ -17,7 +19,7 @@ interface HandlerResponse {
     statusCode: number
     contentType: string
     data: string
-    headers?: Record<string, string>
+    headers?: Header[]
 }
 
 const isResponse = (response: any): response is HandlerResponse => (response as HandlerResponse)?.statusCode !== undefined;

@@ -1,24 +1,31 @@
 import http from "node:http"
 
 import { Router } from "./router.js"
+import { Logger } from "../logger.js"
+import type { Header } from "./header.js"
 
 export { Dispatcher }
 
 class Dispatcher extends Router {
-    name: string
-    rootPath: string
     private server: http.Server
 
     public constructor(
-        name: string = "SWS Web App",
-        rootPath: string = "",
+        {name, rootPath, logger, defaultHeaders}: 
+        {name?: string,
+        rootPath?: string,
+        logger?: Logger,
+        defaultHeaders?: Header[]}
     ) {
-        super()
-        this.server = http.createServer()
+        name = name ??= "SWS Web App"
+        rootPath = rootPath ??= "/"
+        defaultHeaders = defaultHeaders ??= []
 
-        this.name = name;
-        this.rootPath = rootPath;
-        this.fullPath = `${this.rootPath}`
+        super({name: name, rootPath: rootPath, dispatcherPath: "", logger: logger, defaultHeaders: defaultHeaders})
+
+        this.server = http.createServer()
+        this.defaultHeaders = defaultHeaders
+        this.fullPath = rootPath
+        this.dispatcherPath = ""
     }
 
     public async run(port: number = 8000, hostname: string = "localhost"): Promise<void> {
